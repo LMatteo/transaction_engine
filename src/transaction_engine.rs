@@ -1,41 +1,23 @@
-use std::{ error::Error, collections::HashMap};
+use std::{ collections::HashMap};
 
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Debug, Deserialize, Clone,Copy)]
-pub struct Transaction {
-    #[serde(rename = "type")]
-    transaction_type: TransactionType,
-    client: u16,
-    tx: u32,
-    amount: f32
-}
-
-#[derive(Debug, Deserialize,Clone,Copy)]
-pub enum TransactionType {
-    #[serde(rename = "deposit")]
-    Deposit,
-    #[serde(rename = "withdrawal")]
-    Withdrawal,
-    #[serde(rename = "dispute")]
-    Dispute
-}
 
 pub enum TransactionEnum {
-    Deposit(u32,u32,f32),
-    Withdrawal(u32,u32,f32),
-    Dispute(u32,u32)
+    Deposit{client_id: u32, tx_id : u32, amount: f32},
+    Withdrawal{client_id: u32, tx_id : u32, amount: f32},
+    Dispute{client_id: u32, tx_id : u32}
 } 
 
+#[derive(Clone)]
 pub enum PersistedTransaction{
-    Deposit(u32,u32,f32),
-    Withdrawal(u32,u32,f32),
+    Deposit{client_id: u32, tx_id : u32, amount: f32},
 }
 
 #[derive(Clone,Copy,Debug, Deserialize, Serialize)]
 pub struct Client {
-    client: u16,
+    client: u32,
     available: f32,
     held: f32,
     total: f32,
@@ -43,7 +25,7 @@ pub struct Client {
 }
 
 struct ClientList{
-    clients: HashMap<u16,Client>
+    clients: HashMap<u32,Client>
 }
 
 impl ClientList {
@@ -51,7 +33,7 @@ impl ClientList {
         ClientList { clients: HashMap::new() }
     }
 
-    fn get_mut(&mut self,id: u16) -> &mut Client {
+    fn get_mut(&mut self,id: u32) -> &mut Client {
         self.clients
             .entry(id)
             .or_insert_with(|| Client{
@@ -78,8 +60,7 @@ enum TransactionState {
 
 pub struct TransactionEngine {
     client_list: ClientList,
-    transactions: HashMap<u32,(Transaction,TransactionState)>,
-    txs: HashMap<u32,(TransactionState)>,
+    transactions: HashMap<u32,(PersistedTransaction,TransactionState)>,
 }
 
 impl TransactionEngine {
@@ -90,11 +71,11 @@ impl TransactionEngine {
         }
     }
 
-    pub fn compute_transaction(&mut self, transaction: &Transaction) {
-        match transaction.transaction_type {
-            TransactionType::Deposit => self.handle_deposit(transaction),
-            TransactionType::Withdrawal => self.handle_withdrawal(transaction),
-            TransactionType::Dispute => self.handle_dispute(transaction),
+    pub fn compute_transaction(&mut self, transaction: TransactionEnum) {
+        match transaction {
+            TransactionEnum::Deposit{client_id,tx_id,amount} => self.handle_deposit(client_id,tx_id,amount),
+            TransactionEnum::Withdrawal{client_id,tx_id,amount} => self.handle_withdrawal(client_id,tx_id,amount),
+            TransactionEnum::Dispute{client_id,tx_id} => self.handle_dispute(client_id,tx_id),
         }
     }
 
@@ -102,46 +83,45 @@ impl TransactionEngine {
         (&self.client_list).get_all().clone()
     }
 
-    fn handle_deposit(&mut self, transaction: &Transaction) {
-        let client = self.client_list.get_mut(transaction.client);
+    fn handle_deposit(&mut self, client_id: u32, tx_id : u32, amount: f32) {
+        let client = self.client_list.get_mut(client_id);
     
-        client.total += transaction.amount;
-        client.available += transaction.amount;
+        client.total += amount;
+        client.available += amount;
 
-        self.transactions.insert(transaction.tx, (transaction.clone(),TransactionState::None));
+        self.transactions.insert(tx_id, 
+            (PersistedTransaction::Deposit { client_id, tx_id,  amount },TransactionState::None));
     }
 
-    fn handle_withdrawal(&mut self, transaction: &Transaction) {
-        let client = self.client_list.get_mut(transaction.client);
+    fn handle_withdrawal(&mut self, client_id: u32, _ : u32, amount: f32) {
+        let client = self.client_list.get_mut(client_id);
         
-        if client.total >= transaction.amount || client.available >= transaction.amount {
-            client.total -= transaction.amount;
-            client.available -= transaction.amount;
+        if client.total >= amount || client.available >= amount {
+            client.total -= amount;
+            client.available -= amount;
 
-            self.transactions.insert(transaction.tx, (transaction.clone(),TransactionState::None));
         }
     }
 
-    fn handle_dispute(&mut self, transaction: &Transaction) {
-        let (disputed,state) = match self.transactions.get(&transaction.tx){
+    fn handle_dispute(&mut self, _: u32, tx_id : u32) {
+        let (disputed,state) = match self.transactions.get(&tx_id){
             Some(tx) => tx,
             None => return,
         };
-
-        if !matches!(disputed.transaction_type, TransactionType::Deposit) {
-                return
-        }
 
         if matches!(state, &TransactionState::Disputed) {
             return
         }
         
-        let client = self.client_list.get_mut(transaction.client);
+        match disputed {
+            PersistedTransaction::Deposit { client_id, tx_id: _, amount } => {
+                let client = self.client_list.get_mut(*client_id);
+                client.available -= amount;
+                client.held += amount;
+            }
+        }
 
-        client.available -= disputed.amount;
-        client.held += disputed.amount;
-
-        self.transactions.insert(transaction.tx, (disputed.clone(),TransactionState::Disputed));
+        self.transactions.insert(tx_id, (disputed.clone(),TransactionState::Disputed));
     }
 }
 
@@ -152,14 +132,12 @@ mod tests {
     #[test]
     fn when_deposit_should_increase_total_and_available() {
         let mut engine = TransactionEngine::new();
-        let transaction = Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
-            amount: 10.0
-        };
 
-        engine.compute_transaction(&transaction);
+        engine.compute_transaction(TransactionEnum::Deposit { 
+            client_id: 1, 
+            tx_id: 1, 
+            amount: 10.0 
+        });
         let clients = engine.get_client_list();
 
         assert_eq!(clients.len(),1);
@@ -173,16 +151,14 @@ mod tests {
     fn when_withdrawal_and_fund_available_should_decrease_total_and_available() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
+        engine.compute_transaction(TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
             amount: 30.0
         });
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Withdrawal,
-            client: 1,
-            tx: 2,
+        engine.compute_transaction(TransactionEnum::Withdrawal{
+            client_id: 1,
+            tx_id: 2,
             amount: 20.0
         });
         let clients = engine.get_client_list();
@@ -198,16 +174,14 @@ mod tests {
     fn when_withdrawal_and_fund_not_available_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
+        engine.compute_transaction(TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
             amount: 50.0
         });
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Withdrawal,
-            client: 1,
-            tx: 2,
+        engine.compute_transaction(TransactionEnum::Withdrawal{
+            client_id: 1,
+            tx_id: 2,
             amount: 60.0
         });
         let clients = engine.get_client_list();
@@ -222,65 +196,41 @@ mod tests {
     #[test]
     fn when_deposit_should_copy_it_with_state_none() {
         let mut engine = TransactionEngine::new();
-        let transaction = Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
+        let transaction = TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
             amount: 10.0
         };
 
-        engine.compute_transaction(&transaction);
+        engine.compute_transaction(transaction);
         
         assert_eq!(engine.transactions.len(),1);
-        let (tx,state) = engine.transactions.get(&transaction.tx).unwrap();
+        let (tx,state) = engine.transactions.get(&1).unwrap();
 
-        assert!(matches!(state,TransactionState::None));
-        assert_eq!(tx.tx,transaction.tx);
-        assert!(matches!(tx.transaction_type,TransactionType::Deposit));
-        assert_eq!(tx.client,transaction.client);
-        assert_eq!(tx.amount,transaction.amount);
+        if let PersistedTransaction::Deposit { client_id, tx_id, amount } = tx {
+            assert!(matches!(state,TransactionState::None));
+            assert_eq!(*tx_id,1);
+            assert_eq!(*client_id,1);
+            assert_eq!(*amount,10.0);
+        } else {
+            panic!()
+        }   
+        
     }
 
-    #[test]
-    fn when_succesful_withdrawal_should_copy_it_with_state_none() {
-        let mut engine = TransactionEngine::new();
-
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
-            amount: 30.0
-        });
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Withdrawal,
-            client: 1,
-            tx: 2,
-            amount: 20.0
-        });
-        let (tx,state) = engine.transactions.get(&2).unwrap();
-
-        assert!(matches!(state,TransactionState::None));
-        assert_eq!(tx.tx,2);
-        assert!(matches!(tx.transaction_type,TransactionType::Withdrawal));
-        assert_eq!(tx.client,1);
-        assert_eq!(tx.amount,20.0);
-    }
 
     #[test]
     fn when_dispute_on_deposit_should_decrease_available_increase_held() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
+        engine.compute_transaction(TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Dispute,
-            client: 1,
-            tx: 1,
-            amount: 0.0
+        engine.compute_transaction(TransactionEnum::Dispute{
+            client_id: 1,
+            tx_id: 1,
         });
 
         let (_, state) = engine.transactions.get(&1).unwrap();
@@ -296,23 +246,18 @@ mod tests {
     fn when_dispute_on_already_disputed_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Deposit,
-            client: 1,
-            tx: 1,
+        engine.compute_transaction(TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Dispute,
-            client: 1,
-            tx: 1,
-            amount: 0.0
+        engine.compute_transaction(TransactionEnum::Dispute{
+            client_id: 1,
+            tx_id: 1
         });
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Dispute,
-            client: 1,
-            tx: 1,
-            amount: 0.0
+        engine.compute_transaction(TransactionEnum::Dispute{
+            client_id: 1,
+            tx_id: 1
         });
 
         let (_, state) = engine.transactions.get(&1).unwrap();
@@ -328,11 +273,9 @@ mod tests {
     fn when_dispute_on_missing_tx_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(&Transaction{
-            transaction_type: TransactionType::Dispute,
-            client: 1,
-            tx: 1,
-            amount: 0.0
+        engine.compute_transaction(TransactionEnum::Dispute{
+            client_id: 1,
+            tx_id: 1,
         });
 
         assert_eq!(0,engine.transactions.len());

@@ -68,8 +68,8 @@ fn dispute() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn compare_stdout(clients: Vec<Client>) -> impl Fn(&[u8]) -> bool {
-    |x: &[u8]| {
+fn compare_stdout(expected: Vec<Client>) -> impl Fn(&[u8]) -> bool {
+    move |x: &[u8]| {
         let mut rdr = csv::Reader::from_reader(x);
         let mut clients : Vec<Client> = rdr.deserialize()
             .filter(|client: &Result<Client, csv::Error>| client.is_ok())
@@ -79,7 +79,7 @@ fn compare_stdout(clients: Vec<Client>) -> impl Fn(&[u8]) -> bool {
             .collect();
         clients.sort();
 
-        clients == clients
+        expected == clients
     }
 }
 
@@ -96,17 +96,19 @@ impl std::cmp::Ord for Client {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         if self.client > other.client {
             Ordering::Greater
-        } else if self.client < other.client {
-            Ordering::Less
         } else {
-            Ordering::Equal
+            Ordering::Less
         }
     }
 }
 
 impl PartialEq for Client {
     fn eq(&self, other: &Self) -> bool {
-        self.client == other.client
+        self.client == other.client &&
+        self.available == other.available &&
+        self.locked == other.locked &&
+        self.held == other.held &&
+        self.total == other.total
     }
 }
 
