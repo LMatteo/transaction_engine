@@ -51,7 +51,9 @@ pub enum TransactionType {
     #[serde(rename = "withdrawal")]
     Withdrawal,
     #[serde(rename = "dispute")]
-    Dispute
+    Dispute,
+    #[serde(rename = "resolve")]
+    Resolve,
 }
 
 #[derive(Debug, Deserialize, Clone,Copy)]
@@ -92,6 +94,12 @@ impl TryInto<transaction_engine::TransactionEnum> for Transaction {
             },
             TransactionType::Dispute => {
                 Ok(transaction_engine::TransactionEnum::Dispute { 
+                    client_id: self.client, 
+                    tx_id: self.tx 
+                })
+            },
+            TransactionType::Resolve => {
+                Ok(transaction_engine::TransactionEnum::Resolve { 
                     client_id: self.client, 
                     tx_id: self.tx 
                 })

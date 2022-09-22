@@ -7,7 +7,8 @@ use serde::Serialize;
 pub enum TransactionEnum {
     Deposit{client_id: u32, tx_id : u32, amount: f32},
     Withdrawal{client_id: u32, tx_id : u32, amount: f32},
-    Dispute{client_id: u32, tx_id : u32}
+    Dispute{client_id: u32, tx_id : u32},
+    Resolve{client_id: u32, tx_id : u32}
 } 
 
 #[derive(Clone)]
@@ -76,6 +77,7 @@ impl TransactionEngine {
             TransactionEnum::Deposit{client_id,tx_id,amount} => self.handle_deposit(client_id,tx_id,amount),
             TransactionEnum::Withdrawal{client_id,tx_id,amount} => self.handle_withdrawal(client_id,tx_id,amount),
             TransactionEnum::Dispute{client_id,tx_id} => self.handle_dispute(client_id,tx_id),
+            TransactionEnum::Resolve{client_id,tx_id} => self.handle_resolve(client_id,tx_id),
         }
     }
 
@@ -122,6 +124,27 @@ impl TransactionEngine {
         }
 
         self.transactions.insert(tx_id, (disputed.clone(),TransactionState::Disputed));
+    }
+
+    fn handle_resolve(&mut self, _: u32, tx_id : u32) {
+        let (disputed,state) = match self.transactions.get(&tx_id){
+            Some(tx) => tx,
+            None => return,
+        };
+
+        if matches!(state, &TransactionState::None) {
+            return
+        }
+
+        match disputed {
+            PersistedTransaction::Deposit { client_id, tx_id: _, amount } => {
+                let client = self.client_list.get_mut(*client_id);
+                client.available += amount;
+                client.held -= amount;
+            }
+        }
+
+        self.transactions.insert(tx_id, (disputed.clone(),TransactionState::None));
     }
 }
 
@@ -280,6 +303,72 @@ mod tests {
 
         assert_eq!(0,engine.transactions.len());
         assert_eq!(0,engine.client_list.get_all().len())
+    }
+    #[test]
+    fn when_resolve_on_missing_tx_should_do_nothing() {
+        let mut engine = TransactionEngine::new();
+
+        engine.compute_transaction(TransactionEnum::Resolve {
+            client_id: 1,
+            tx_id: 1,
+        });
+
+        assert_eq!(0,engine.transactions.len());
+        assert_eq!(0,engine.client_list.get_all().len())
+    }
+
+    #[test]
+    fn when_resolve_on_not_disputed_tx_should_do_nothing() {
+        let mut engine = TransactionEngine::new();
+
+        engine.compute_transaction(TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
+            amount: 10.0
+        });
+        engine.compute_transaction(TransactionEnum::Resolve {
+            client_id: 1,
+            tx_id: 1,
+        });
+
+        assert_eq!(1,engine.transactions.len());
+
+        let (_,state) = engine.transactions.get(&1).unwrap();
+        assert!(matches!(state,TransactionState::None));
+
+        let client = engine.client_list.get_mut(1);
+        assert_eq!(client.total,10.0);
+        assert_eq!(client.available,10.0);
+        assert_eq!(client.held,0.0)
+    }
+
+    #[test]
+    fn when_resolve_should_revert_dispute() {
+        let mut engine = TransactionEngine::new();
+
+        engine.compute_transaction(TransactionEnum::Deposit{
+            client_id: 1,
+            tx_id: 1,
+            amount: 10.0
+        });
+        engine.compute_transaction(TransactionEnum::Dispute{
+            client_id: 1,
+            tx_id: 1,
+        });
+        engine.compute_transaction(TransactionEnum::Resolve {
+            client_id: 1,
+            tx_id: 1,
+        });
+
+        assert_eq!(1,engine.transactions.len());
+
+        let (_,state) = engine.transactions.get(&1).unwrap();
+        assert!(matches!(state,TransactionState::None));
+
+        let client = engine.client_list.get_mut(1);
+        assert_eq!(client.total,10.0);
+        assert_eq!(client.available,10.0);
+        assert_eq!(client.held,0.0)
     }
 }
 
