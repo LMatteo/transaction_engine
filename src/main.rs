@@ -54,6 +54,8 @@ pub enum TransactionType {
     Dispute,
     #[serde(rename = "resolve")]
     Resolve,
+    #[serde(rename = "chargeback")]
+    Chargeback,
 }
 
 #[derive(Debug, Deserialize, Clone,Copy)]
@@ -100,6 +102,12 @@ impl TryInto<transaction_engine::TransactionEnum> for Transaction {
             },
             TransactionType::Resolve => {
                 Ok(transaction_engine::TransactionEnum::Resolve { 
+                    client_id: self.client, 
+                    tx_id: self.tx 
+                })
+            },
+            TransactionType::Chargeback => {
+                Ok(transaction_engine::TransactionEnum::Chargeback{ 
                     client_id: self.client, 
                     tx_id: self.tx 
                 })

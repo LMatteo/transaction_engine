@@ -85,6 +85,23 @@ fn resolve() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+#[test]
+fn chargeback() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("transaction_engine")?;
+
+    cmd.arg(get_base_path() + "/chargeback.csv");
+
+    let mut expected = vec![
+        Client{client: 1,available:35.0,held: 50.0,total: 85.0,locked: true},
+    ];
+    expected.sort();
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::function(compare_stdout(expected)));
+
+    Ok(())
+}
 
 fn compare_stdout(expected: Vec<Client>) -> impl Fn(&[u8]) -> bool {
     move |x: &[u8]| {
