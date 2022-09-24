@@ -89,6 +89,10 @@ impl TransactionEngine {
 
     fn handle_deposit(&mut self, client_id: u16, tx_id : u32, amount: f64) {
         let client = self.client_list.get_mut(client_id);
+
+        if client.locked {
+            return
+        }
     
         client.total += amount;
         client.available += amount;
@@ -99,6 +103,10 @@ impl TransactionEngine {
 
     fn handle_withdrawal(&mut self, client_id: u16, _ : u32, amount: f64) {
         let client = self.client_list.get_mut(client_id);
+
+        if client.locked {
+            return
+        }
         
         if client.total >= amount || client.available >= amount {
             client.total -= amount;
@@ -195,7 +203,55 @@ mod tests {
     }
 
     #[test]
+    fn when_deposit_on_client_locked_should_do_nothing() {
+        let mut engine = TransactionEngine::new();
+
+        let locked = engine.client_list.get_mut(1);
+        locked.locked = true;
+
+        engine.compute_transaction(Transaction::Deposit { 
+            client_id: 1, 
+            tx_id: 1, 
+            amount: 10.0 
+        });
+        let clients = engine.get_client_list();
+
+        assert_eq!(clients.len(),1);
+        let client = clients.get(0).unwrap();
+        assert_eq!(client.available,0.0);
+        assert_eq!(client.total,0.0);
+        assert_eq!(client.client,1);
+    }
+
+    #[test]
     fn when_withdrawal_and_fund_available_should_decrease_total_and_available() {
+        let mut engine = TransactionEngine::new();
+
+        engine.compute_transaction(Transaction::Deposit{
+            client_id: 1,
+            tx_id: 1,
+            amount: 30.0
+        });
+
+        let locked = engine.client_list.get_mut(1);
+        locked.locked = true;
+
+        engine.compute_transaction(Transaction::Withdrawal{
+            client_id: 1,
+            tx_id: 2,
+            amount: 20.0
+        });
+        let clients = engine.get_client_list();
+
+        assert_eq!(clients.len(),1);
+        let client = clients.get(0).unwrap();
+        assert_eq!(client.available,30.0);
+        assert_eq!(client.total,30.0);
+        assert_eq!(client.client,1);
+    }
+
+    #[test]
+    fn when_withdrawal_on_locked_client_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
         engine.compute_transaction(Transaction::Deposit{
