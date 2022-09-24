@@ -131,9 +131,9 @@ fn compare_stdout(expected: Vec<Client>) -> impl Fn(&[u8]) -> bool {
 #[derive(Clone,Copy,Debug, Deserialize, Serialize, PartialOrd)]
 struct Client {
     client: u32,
-    available: f32,
-    held: f32,
-    total: f32,
+    available: f64,
+    held: f64,
+    total: f64,
     locked: bool
 }
 

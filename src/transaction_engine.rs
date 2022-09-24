@@ -5,29 +5,29 @@ use serde::Serialize;
 
 
 pub enum Transaction {
-    Deposit{client_id: u32, tx_id : u32, amount: f32},
-    Withdrawal{client_id: u32, tx_id : u32, amount: f32},
-    Dispute{client_id: u32, tx_id : u32},
-    Resolve{client_id: u32, tx_id : u32},
-    Chargeback{client_id: u32, tx_id : u32},
+    Deposit{client_id: u16, tx_id : u32, amount: f64},
+    Withdrawal{client_id: u16, tx_id : u32, amount: f64},
+    Dispute{client_id: u16, tx_id : u32},
+    Resolve{client_id: u16, tx_id : u32},
+    Chargeback{client_id: u16, tx_id : u32},
 } 
 
 #[derive(Clone)]
 pub enum PersistedTransaction{
-    Deposit{client_id: u32, tx_id : u32, amount: f32},
+    Deposit{client_id: u16, tx_id : u32, amount: f64},
 }
 
 #[derive(Clone,Copy,Debug, Deserialize, Serialize)]
 pub struct Client {
-    client: u32,
-    available: f32,
-    held: f32,
-    total: f32,
+    client: u16,
+    available: f64,
+    held: f64,
+    total: f64,
     locked: bool
 }
 
 struct ClientList{
-    clients: HashMap<u32,Client>
+    clients: HashMap<u16,Client>
 }
 
 impl ClientList {
@@ -35,7 +35,7 @@ impl ClientList {
         ClientList { clients: HashMap::new() }
     }
 
-    fn get_mut(&mut self,id: u32) -> &mut Client {
+    fn get_mut(&mut self,id: u16) -> &mut Client {
         self.clients
             .entry(id)
             .or_insert_with(|| Client{
@@ -87,7 +87,7 @@ impl TransactionEngine {
         (&self.client_list).get_all().clone()
     }
 
-    fn handle_deposit(&mut self, client_id: u32, tx_id : u32, amount: f32) {
+    fn handle_deposit(&mut self, client_id: u16, tx_id : u32, amount: f64) {
         let client = self.client_list.get_mut(client_id);
     
         client.total += amount;
@@ -97,7 +97,7 @@ impl TransactionEngine {
             (PersistedTransaction::Deposit { client_id, tx_id,  amount },TransactionState::None));
     }
 
-    fn handle_withdrawal(&mut self, client_id: u32, _ : u32, amount: f32) {
+    fn handle_withdrawal(&mut self, client_id: u16, _ : u32, amount: f64) {
         let client = self.client_list.get_mut(client_id);
         
         if client.total >= amount || client.available >= amount {
@@ -107,7 +107,7 @@ impl TransactionEngine {
         }
     }
 
-    fn handle_dispute(&mut self, _: u32, tx_id : u32) {
+    fn handle_dispute(&mut self, _: u16, tx_id : u32) {
         let (disputed,state) = match self.transactions.get(&tx_id){
             Some(tx) => tx,
             None => return,
@@ -128,7 +128,7 @@ impl TransactionEngine {
         self.transactions.insert(tx_id, (disputed.clone(),TransactionState::Disputed));
     }
 
-    fn handle_resolve(&mut self, _: u32, tx_id : u32) {
+    fn handle_resolve(&mut self, _: u16, tx_id : u32) {
         let (disputed,state) = match self.transactions.get(&tx_id){
             Some(tx) => tx,
             None => return,
@@ -149,7 +149,7 @@ impl TransactionEngine {
         self.transactions.insert(tx_id, (disputed.clone(),TransactionState::None));
     }
 
-    fn handle_chargeback(&mut self, _: u32, tx_id : u32) {
+    fn handle_chargeback(&mut self, _: u16, tx_id : u32) {
         let (disputed,state) = match self.transactions.get(&tx_id){
             Some(tx) => tx,
             None => return,

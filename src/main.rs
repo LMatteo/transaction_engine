@@ -65,9 +65,9 @@ pub enum TransactionType {
 pub struct Transaction {
     #[serde(rename = "type")]
     transaction_type: TransactionType,
-    client: u32,
+    client: u16,
     tx: u32,
-    amount: Option<f32>
+    amount: Option<f64>
 }
 
 impl TryInto<transaction_engine::Transaction> for Transaction {
