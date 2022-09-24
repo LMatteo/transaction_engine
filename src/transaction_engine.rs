@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 
-pub enum TransactionEnum {
+pub enum Transaction {
     Deposit{client_id: u32, tx_id : u32, amount: f32},
     Withdrawal{client_id: u32, tx_id : u32, amount: f32},
     Dispute{client_id: u32, tx_id : u32},
@@ -73,13 +73,13 @@ impl TransactionEngine {
         }
     }
 
-    pub fn compute_transaction(&mut self, transaction: TransactionEnum) {
+    pub fn compute_transaction(&mut self, transaction: Transaction) {
         match transaction {
-            TransactionEnum::Deposit{client_id,tx_id,amount} => self.handle_deposit(client_id,tx_id,amount),
-            TransactionEnum::Withdrawal{client_id,tx_id,amount} => self.handle_withdrawal(client_id,tx_id,amount),
-            TransactionEnum::Dispute{client_id,tx_id} => self.handle_dispute(client_id,tx_id),
-            TransactionEnum::Resolve{client_id,tx_id} => self.handle_resolve(client_id,tx_id),
-            TransactionEnum::Chargeback{client_id,tx_id} => self.handle_chargeback(client_id,tx_id),
+            Transaction::Deposit{client_id,tx_id,amount} => self.handle_deposit(client_id,tx_id,amount),
+            Transaction::Withdrawal{client_id,tx_id,amount} => self.handle_withdrawal(client_id,tx_id,amount),
+            Transaction::Dispute{client_id,tx_id} => self.handle_dispute(client_id,tx_id),
+            Transaction::Resolve{client_id,tx_id} => self.handle_resolve(client_id,tx_id),
+            Transaction::Chargeback{client_id,tx_id} => self.handle_chargeback(client_id,tx_id),
         }
     }
 
@@ -180,7 +180,7 @@ mod tests {
     fn when_deposit_should_increase_total_and_available() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit { 
+        engine.compute_transaction(Transaction::Deposit { 
             client_id: 1, 
             tx_id: 1, 
             amount: 10.0 
@@ -198,12 +198,12 @@ mod tests {
     fn when_withdrawal_and_fund_available_should_decrease_total_and_available() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 30.0
         });
-        engine.compute_transaction(TransactionEnum::Withdrawal{
+        engine.compute_transaction(Transaction::Withdrawal{
             client_id: 1,
             tx_id: 2,
             amount: 20.0
@@ -221,12 +221,12 @@ mod tests {
     fn when_withdrawal_and_fund_not_available_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 50.0
         });
-        engine.compute_transaction(TransactionEnum::Withdrawal{
+        engine.compute_transaction(Transaction::Withdrawal{
             client_id: 1,
             tx_id: 2,
             amount: 60.0
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn when_deposit_should_copy_it_with_state_none() {
         let mut engine = TransactionEngine::new();
-        let transaction = TransactionEnum::Deposit{
+        let transaction = Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
@@ -270,12 +270,12 @@ mod tests {
     fn when_dispute_on_deposit_should_decrease_available_increase_held() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(TransactionEnum::Dispute{
+        engine.compute_transaction(Transaction::Dispute{
             client_id: 1,
             tx_id: 1,
         });
@@ -293,16 +293,16 @@ mod tests {
     fn when_dispute_on_already_disputed_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(TransactionEnum::Dispute{
+        engine.compute_transaction(Transaction::Dispute{
             client_id: 1,
             tx_id: 1
         });
-        engine.compute_transaction(TransactionEnum::Dispute{
+        engine.compute_transaction(Transaction::Dispute{
             client_id: 1,
             tx_id: 1
         });
@@ -320,7 +320,7 @@ mod tests {
     fn when_dispute_on_missing_tx_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Dispute{
+        engine.compute_transaction(Transaction::Dispute{
             client_id: 1,
             tx_id: 1,
         });
@@ -332,7 +332,7 @@ mod tests {
     fn when_resolve_on_missing_tx_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Resolve {
+        engine.compute_transaction(Transaction::Resolve {
             client_id: 1,
             tx_id: 1,
         });
@@ -345,12 +345,12 @@ mod tests {
     fn when_resolve_on_not_disputed_tx_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(TransactionEnum::Resolve {
+        engine.compute_transaction(Transaction::Resolve {
             client_id: 1,
             tx_id: 1,
         });
@@ -370,16 +370,16 @@ mod tests {
     fn when_resolve_should_revert_dispute() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(TransactionEnum::Dispute{
+        engine.compute_transaction(Transaction::Dispute{
             client_id: 1,
             tx_id: 1,
         });
-        engine.compute_transaction(TransactionEnum::Resolve {
+        engine.compute_transaction(Transaction::Resolve {
             client_id: 1,
             tx_id: 1,
         });
@@ -399,7 +399,7 @@ mod tests {
     fn when_chargeback_on_missing_tx_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Chargeback{
+        engine.compute_transaction(Transaction::Chargeback{
             client_id: 1,
             tx_id: 1,
         });
@@ -412,12 +412,12 @@ mod tests {
     fn when_chargeback_on_not_disputed_tx_should_do_nothing() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(TransactionEnum::Chargeback {
+        engine.compute_transaction(Transaction::Chargeback {
             client_id: 1,
             tx_id: 1,
         });
@@ -437,16 +437,16 @@ mod tests {
     fn when_chargeback_should_freeze_and_withdraw() {
         let mut engine = TransactionEngine::new();
 
-        engine.compute_transaction(TransactionEnum::Deposit{
+        engine.compute_transaction(Transaction::Deposit{
             client_id: 1,
             tx_id: 1,
             amount: 10.0
         });
-        engine.compute_transaction(TransactionEnum::Dispute{
+        engine.compute_transaction(Transaction::Dispute{
             client_id: 1,
             tx_id: 1,
         });
-        engine.compute_transaction(TransactionEnum::Chargeback {
+        engine.compute_transaction(Transaction::Chargeback {
             client_id: 1,
             tx_id: 1,
         });

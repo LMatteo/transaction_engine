@@ -103,6 +103,16 @@ fn chargeback() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn missing_arg() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("transaction_engine")?;
+
+    cmd.assert()
+        .failure();
+
+    Ok(())
+}
+
 fn compare_stdout(expected: Vec<Client>) -> impl Fn(&[u8]) -> bool {
     move |x: &[u8]| {
         let mut rdr = csv::Reader::from_reader(x);

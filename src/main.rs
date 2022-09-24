@@ -1,23 +1,27 @@
-use std::error::Error;
-
 use csv::Writer;
 use serde::Deserialize;
 
 mod transaction_engine;
 
-fn main() -> Result<(),Box<dyn Error>> {
+fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = match args.get(1) {
         Some(path) => path,
         None => {
             println!("Missing argument");
-            std::process::exit(1)
+            std::process::exit(1);
         }
     };
 
     let mut engine = transaction_engine::TransactionEngine::new();
 
-    let mut rdr = csv::Reader::from_path(path)?;
+    let mut rdr = match csv::Reader::from_path(path){
+        Ok(rdr) => rdr,
+        Err(e) => {
+            eprintln!("Application error: {e}");
+            std::process::exit(1);
+        },
+    };
     rdr.deserialize()
         .for_each(|res: Result<Transaction, csv::Error>|{
             match res {
@@ -38,9 +42,8 @@ fn main() -> Result<(),Box<dyn Error>> {
         writer.serialize(client);
     });
 
-    writer.flush()?;
+    writer.flush();
 
-    Ok(())
 }
 
 
@@ -67,14 +70,14 @@ pub struct Transaction {
     amount: Option<f32>
 }
 
-impl TryInto<transaction_engine::TransactionEnum> for Transaction {
+impl TryInto<transaction_engine::Transaction> for Transaction {
     type Error = ();
 
-    fn try_into(self) -> Result<transaction_engine::TransactionEnum, Self::Error> {
+    fn try_into(self) -> Result<transaction_engine::Transaction, Self::Error> {
         match self.transaction_type {
             TransactionType::Deposit => {
                 if let Some(amount) = self.amount  {
-                    Ok(transaction_engine::TransactionEnum::Deposit { 
+                    Ok(transaction_engine::Transaction::Deposit { 
                         client_id: self.client, 
                         tx_id: self.tx, 
                         amount 
@@ -85,7 +88,7 @@ impl TryInto<transaction_engine::TransactionEnum> for Transaction {
             },
             TransactionType::Withdrawal => {
                 if let Some(amount) = self.amount  {
-                    Ok(transaction_engine::TransactionEnum::Withdrawal { 
+                    Ok(transaction_engine::Transaction::Withdrawal { 
                         client_id: self.client, 
                         tx_id: self.tx, 
                         amount 
@@ -95,19 +98,19 @@ impl TryInto<transaction_engine::TransactionEnum> for Transaction {
                 } 
             },
             TransactionType::Dispute => {
-                Ok(transaction_engine::TransactionEnum::Dispute { 
+                Ok(transaction_engine::Transaction::Dispute { 
                     client_id: self.client, 
                     tx_id: self.tx 
                 })
             },
             TransactionType::Resolve => {
-                Ok(transaction_engine::TransactionEnum::Resolve { 
+                Ok(transaction_engine::Transaction::Resolve { 
                     client_id: self.client, 
                     tx_id: self.tx 
                 })
             },
             TransactionType::Chargeback => {
-                Ok(transaction_engine::TransactionEnum::Chargeback{ 
+                Ok(transaction_engine::Transaction::Chargeback{ 
                     client_id: self.client, 
                     tx_id: self.tx 
                 })
